@@ -20,9 +20,6 @@ jobs:
       - run: |
           [[ "${{ inputs.image_tag }}" =~ ^sha-[0-9a-f]{7}$ ]] || {
             echo "image_tag must be sha-<sha7>"; exit 1; }
-      - name: Debug secret presence
-        run: echo "Secret is  ${{ secrets.gh_pat }}"
-
   promote:
     needs: validate
     runs-on: ubuntu-latest
