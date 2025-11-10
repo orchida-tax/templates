@@ -45,6 +45,8 @@ jobs:
           GH_TOKEN: ${{ secrets.gh_pat }}
         run: |
           cd helm-deployments
+          git config user.name "ci-bot"
+          git config user.email "ci-bot@org.com"
           BRANCH="promote/$(echo '${{ inputs.env_file }}' | tr '/' '-')/$(date +%s)"
           git checkout -b "$BRANCH"
           git add ${{ inputs.env_file }}
