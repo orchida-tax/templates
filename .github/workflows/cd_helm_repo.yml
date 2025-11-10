@@ -1,0 +1,64 @@
+name: Templates - Update Helm Repo Image Tag by Environment
+
+on:
+  workflow_call:
+    inputs:
+      helm_repo: { type: string, required: true }
+      env_file: { type: string, required: true }
+      yaml_path: { type: string, required: true }
+      image_tag: { type: string, required: true }
+      mode: { type: string, default: "pr" }
+      pr_title: { type: string, default: "Promote" }
+      pr_body: { type: string, default: "" }
+    secrets:
+      gh_pat: { required: true }
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          [[ "${{ inputs.image_tag }}" =~ ^sha-[0-9a-f]{7}$ ]] || {
+            echo "image_tag must be sha-<sha7>"; exit 1; }
+
+  promote:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.helm_repo }}
+          ref: main
+          path: helm-deployments
+          token: ${{ secrets.gh_pat }}
+
+      - name: Bump tag safely
+        uses: ./.github/actions/helm-bump-tag
+        with:
+          file: ${{ inputs.env_file }}
+          yaml_path: ${{ inputs.yaml_path }}
+          new_value: ${{ inputs.image_tag }}
+
+      - name: Open PR
+        if: ${{ inputs.mode == 'pr' }}
+        env:
+          GH_TOKEN: ${{ secrets.gh_pat }}
+        run: |
+          cd helm-deployments
+          BRANCH="promote/$(echo '${{ inputs.env_file }}' | tr '/' '-')/$(date +%s)"
+          git checkout -b "$BRANCH"
+          git add ${{ inputs.env_file }}
+          git commit -m "${{ inputs.pr_title }}: ${{ inputs.image_tag }}"
+          git push https://x-access-token:${{ secrets.gh_pat }}@github.com/${{ inputs.helm_repo }}.git "$BRANCH"
+          gh repo set-default ${{ inputs.helm_repo }}
+          gh pr create --title "${{ inputs.pr_title }}" --body "${{ inputs.pr_body }}" --base main --head "$BRANCH"
+
+      - name: Push direct
+        if: ${{ inputs.mode == 'direct' }}
+        run: |
+          cd helm-deployments
+          git config user.name "ci-bot"
+          git config user.email "ci-bot@org.com"
+          git add ${{ inputs.env_file }}
+          git commit -m "Promote: ${{ inputs.image_tag }}" || true
+          git push origin main

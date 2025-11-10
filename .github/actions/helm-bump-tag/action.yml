@@ -1,0 +1,17 @@
+name: helm-bump-tag
+description: "Safely update a YAML path (image tag) in a Helm tag file"
+inputs:
+  file: { required: true, description: "File path to edit" }
+  yaml_path: { required: true, description: "Path (e.g., .services.SVC.image.tag)" }
+  new_value: { required: true, description: "New tag (sha-<sha7>)" }
+runs:
+  using: composite
+  steps:
+    - name: Install yq
+      shell: bash
+      run: |
+        curl -Ls https://github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64 -o yq
+        chmod +x yq && sudo mv yq /usr/local/bin/yq
+    - name: Update
+      shell: bash
+      run: yq -i '${{ inputs.yaml_path }} = "${{ inputs.new_value }}"' '${{ inputs.file }}'
