@@ -1,0 +1,12 @@
+services:
+  console.api:
+    image: ${CONTAINER_REGISTRY-}/${GITHUB_REPOSITORY}/console.api:${SHORT_SHA}-${build_tag}
+    build:
+      context: .
+      dockerfile: core/osTaxConsoleCore/DockerFile
+
+  dashboard.api:
+    image: ${CONTAINER_REGISTRY-}/${GITHUB_REPOSITORY}/dashboard.api:${SHORT_SHA}-${build_tag}
+    build:
+      context: .
+      dockerfile: core/osDashboardApi/DockerFile

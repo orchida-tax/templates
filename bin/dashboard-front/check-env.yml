@@ -1,0 +1,40 @@
+name: Set Environment Before Merge
+
+on:
+  pull_request:
+    branches:
+      - main
+      - alpha
+      - dev
+      - testing
+
+jobs:
+  set-env:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set branch-specific environment
+        run: |
+          BRANCH=${{ github.head_ref }}
+          echo "🔍 Pull Request from branch: $BRANCH"
+
+          if [[ "$BRANCH" == "main" ]]; then
+            cp .env.production .env
+            echo "✅ Using .env.production"
+          elif [[ "$BRANCH" == "alpha" ]]; then
+            cp .env.alpha .env
+            echo "✅ Using .env.alpha"
+          elif [[ "$BRANCH" == "dev" ]]; then
+            cp .env.development .env
+            echo "✅ Using .env.development"
+          elif [[ "$BRANCH" == "testing" ]]; then
+            cp .env.testing .env
+            echo "✅ Using .env.testing"
+          else
+            cp .env.development .env
+            echo "✅ Using .env.development"
+          fi
+

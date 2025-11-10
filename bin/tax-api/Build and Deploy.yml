@@ -1,0 +1,105 @@
+name: Build .NET Backend services and Push the images to container registry
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  pull_request:
+    workflow-dispatch:
+    branches:
+      - dev
+      - alfa
+    types: [closed]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  CONTAINER_REGISTRY: ghcr.io
+  SERVICES_NAMES: "pub_api extractor_api dashboard_api"
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    outputs:
+      image: ${{ steps.build-and-push.outputs.image }}
+      build_tag: ${{ steps.build-and-push.outputs.build_tag }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get Short Commit SHA
+        id: short_sha
+        run: echo "SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
+
+      - name: Build and push Docker images
+        id: build-and-push
+        env:
+          CONTAINER_REGISTRY: ${{ env.CONTAINER_REGISTRY }}
+          SHORT_SHA: ${{ env.SHORT_SHA }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.CONTAINER_REGISTRY }} -u ${{ github.actor }} --password-stdin
+          if [[ "${{ github.ref }}" == refs/heads/alfa ]]; then
+            export build_tag=dev
+          elif [[ "${{ github.ref }}" == refs/tags/v*.*.* ]]; then
+            export build_tag=qa    
+          elif [[ "${{ github.ref }}" == refs/heads/main ]]; then
+            export build_tag=latest
+          fi
+          docker compose --parallel 5 -f docker-compose.build.yml build
+          docker compose --parallel 5 -f docker-compose.build.yml push 
+          echo "image=${{ env.SHORT_SHA }}" >> "$GITHUB_OUTPUT"
+          echo "build_tag=$build_tag" >> $GITHUB_OUTPUT
+
+  update-helm-chart:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Helm chart repository
+        uses: actions/checkout@v4
+        with:
+          repository: orchida-tax/helm-deployments
+          ref: "main"
+          path: helm-deployments
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Install yq
+        run: |
+          VERSION=v4.45.1
+          BINARY=yq_linux_amd64
+          wget https://github.com/mikefarah/yq/releases/download/${VERSION}/${BINARY}.tar.gz -O - |\
+          tar xz && sudo mv ${BINARY} /usr/bin/yq
+
+      - name: Update image tags
+        run: |
+          cd helm-deployments/OrchidaTax
+          BUILD_TAG=${{ needs.build-and-push.outputs.build_tag }}
+          IMAGE=${{ needs.build-and-push.outputs.image }}
+          echo "Updating values-$BUILD_TAG.yaml file"
+          set -x
+          for service in $SERVICES_NAMES; do
+            echo "$service"
+            if [[ "$BUILD_TAG" == "latest" ]]; then
+              yq -i ".services.${service}.image.tag = \"$IMAGE-$BUILD_TAG\"" values-staging.yaml
+              yq -i ".services.${service}.image.tag = \"$IMAGE-$BUILD_TAG\"" values-prod.yaml
+            else
+              yq -i ".services.${service}.image.tag = \"$IMAGE-$BUILD_TAG\"" values-$BUILD_TAG.yaml
+            fi
+          done
+          set +x
+
+      - name: Commit and push Helm chart changes
+        run: |
+          cd helm-deployments/OrchidaTax
+          BUILD_TAG=${{ needs.build-and-push.outputs.build_tag }}
+          IMAGE=${{ needs.build-and-push.outputs.image }}
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add .
+          git commit -m "Update backend-services tags for $BUILD_TAG enviroment to $IMAGE-$BUILD_TAG"
+          git push origin main

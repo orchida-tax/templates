@@ -1,0 +1,56 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - project: osTaxConsoleCore
+            tag: tax-api
+          - project: osDashboardApi
+            tag: dashboard
+
+    env:
+      IMAGE_NAME: nabilmokhtar0/peppol-ae
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore core/${{ matrix.project }}/${{ matrix.project }}.csproj
+
+      - name: Build
+        run: dotnet build core/${{ matrix.project }}/${{ matrix.project }}.csproj --no-restore --configuration Release
+
+      - name: Publish
+        run: dotnet publish core/${{ matrix.project }}/${{ matrix.project }}.csproj --no-build --configuration Release --output core/${{ matrix.project }}/publish_output
+
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          
+      - name: Build Docker image
+        run: |
+          docker build -t $IMAGE_NAME:${{ matrix.tag }} -f core/${{ matrix.project }}/DockerFile .
+
+      - name: Push Docker image
+        run: |
+          docker push $IMAGE_NAME:${{ matrix.tag }}
