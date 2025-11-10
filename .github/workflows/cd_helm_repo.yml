@@ -38,7 +38,7 @@ jobs:
       - name: Bump tag safely
         uses: orchida-tax/templates/.github/actions/helm-bump-tag@main
         with:
-          file: ${{ inputs.env_file }}
+          file: helm-deployments/${{ inputs.env_file }}
           yaml_path: ${{ inputs.yaml_path }}
           new_value: ${{ inputs.image_tag }}
 
