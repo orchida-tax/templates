@@ -27,7 +27,7 @@ jobs:
       contents: read
       packages: write
     outputs:
-      image_tag: sha-${{ steps.vars.outputs.short_sha }}
+      image_tag: ${{ steps.vars.outputs.short_sha }}
       is_tag_release: ${{ steps.vars.outputs.is_tag_release }}
       semver: ${{ steps.vars.outputs.semver }}
 
@@ -41,6 +41,7 @@ jobs:
           short_sha="$(echo $GITHUB_SHA | cut -c1-7)"
           echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
           echo "full_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "image_tag=sha-$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           [[ "${GITHUB_REF}" == "refs/heads/dev"   ]] && echo "is_dev=true"   >> "$GITHUB_OUTPUT"
           [[ "${GITHUB_REF}" == "refs/heads/alpha" ]] && echo "is_alpha=true" >> "$GITHUB_OUTPUT"
           [[ "${GITHUB_REF}" == "refs/heads/main"  ]] && echo "is_main=true"  >> "$GITHUB_OUTPUT"
