@@ -1,4 +1,4 @@
-name: helm-bump-tag
+name: helm_update_image_tag
 description: "Safely update a YAML path (image tag) in a Helm tag file"
 inputs:
   file: { required: true, description: "File path to edit" }
