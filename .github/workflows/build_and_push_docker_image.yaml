@@ -6,12 +6,9 @@ on:
       image_repo: { type: string, required: true } # ghcr.io/orchida-tax/peppol_ap
       push_convenience: { type: boolean, default: true }
     outputs:
-      short_sha:
-        description: "Short SHA 7 chars (branch-<short_sha>)"
-        value: ${{ jobs.build.outputs.short_sha }}
-      full_sha:
-        description: "Full commit SHA"
-        value: ${{ jobs.build.outputs.full_sha }}
+      image_tag:
+        description: "Image tag (sha-<sha7>)"
+        value: ${{ jobs.build.outputs.image_tag }}
       is_tag_release:
         description: "true if tag release"
         value: ${{ jobs.build.outputs.is_tag_release }}
@@ -27,7 +24,7 @@ jobs:
       contents: read
       packages: write
     outputs:
-      image_tag: ${{ steps.vars.outputs.short_sha }}
+      image_tag: ${{ steps.vars.outputs.image_tag }}
       is_tag_release: ${{ steps.vars.outputs.is_tag_release }}
       semver: ${{ steps.vars.outputs.semver }}
 
