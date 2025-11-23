@@ -73,7 +73,8 @@ jobs:
 
           IMAGE="${{ inputs.image_repo }}"
           short_sha="${{ steps.vars.outputs.short_sha }}"
-          BASE="${IMAGE}:sha-${short_sha}"
+          full_sha="${{ steps.vars.outputs.full_sha }}"
+          BASE="${IMAGE}:sha-${full_sha}"
 
           if [[ "${{ steps.vars.outputs.is_dev }}" == "true" ]]; then
             docker tag "$BASE" "${IMAGE}:dev-latest"
