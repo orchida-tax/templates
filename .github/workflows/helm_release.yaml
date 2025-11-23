@@ -13,14 +13,14 @@ on:
       gh_pat: { required: true }
 
 jobs:
-  validate_image_tag:
-    name: validate New Image Tag
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          echo "please validate image tag as it must exist in ghcr.io before helm release"
+  # validate_image_tag:
+  #   name: validate New Image Tag
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - run: |
+  #         echo "please validate image tag as it must exist in ghcr.io before helm release"
   helm_release:
-    needs: validate_image_tag
+    # needs: validate_image_tag
     runs-on: ubuntu-latest
     name: Helm Release to ${{ inputs.helm_repo }}
     environment:
