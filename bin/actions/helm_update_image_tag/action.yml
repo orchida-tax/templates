@@ -1,0 +1,17 @@
+name: helm_update_image_tag
+description: "Safely update a YAML path (image tag) in a Helm tag file"
+inputs:
+  helm_values_file_path: { required: true, description: "File path to edit" }
+  image_tag_path: { required: true, description: "Path (e.g., .services.SVC.image.tag)" }
+  new_image_tag: { required: true, description: "New tag (sha-<sha7>)" }
+runs:
+  using: composite
+  steps:
+  - name: Install yq
+    shell: bash
+    run: |
+      curl -Ls https://github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64 -o yq
+      chmod +x yq && sudo mv yq /usr/local/bin/yq
+  - name: Update
+    shell: bash
+    run: yq -i '${{ inputs.image_tag_path }} = "${{ inputs.new_image_tag }}"' '${{ inputs.helm_values_file_path }}'

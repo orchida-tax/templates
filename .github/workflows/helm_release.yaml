@@ -11,31 +11,33 @@ on:
       gh_pat: { required: true }
 
 jobs:
-  validate:
+  validate_image_tag:
+    name: validate New Image Tag
     runs-on: ubuntu-latest
     steps:
       - run: |
-          echo "please validate image tag is exist in ghcr.io"
-  promote:
-    needs: validate
+          echo "please validate image tag as it must exist in ghcr.io before helm release"
+  helm_release:
+    needs: validate_image_tag
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout target repo
+      - name: Checkout Helm repo
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.helm_repo }}
           ref: main
           path: helm-deployments
           token: ${{ secrets.gh_pat }}
-
-      - name: Bump tag safely
-        uses: orchida-tax/templates/.github/actions/helm_update_image_tag@main
-        with:
-          helm_values_file_path: helm-deployments/${{ inputs.helm_values_file_path }}
-          image_tag_path: ${{ inputs.image_tag_path }}
-          new_image_tag: ${{ inputs.new_image_tag }}
-
-      - name: Push direct
+      - name: Install yq
+        shell: bash
+        run: |
+          curl -Ls https://github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64 -o yq
+          chmod +x yq && sudo mv yq /usr/local/bin/yq
+      - name: Apply new image tag
+        shell: bash
+        run: |
+          yq -i '${{ inputs.image_tag_path }} = "${{ inputs.new_image_tag }}"' '${{ inputs.helm_values_file_path }}'
+      - name: Merge Direct to main Branch (let argo do the rest)
         run: |
           cd helm-deployments
           git config user.name "ci-bot"
