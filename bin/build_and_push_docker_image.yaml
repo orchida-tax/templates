@@ -58,10 +58,10 @@ jobs:
         shell: bash
         run: |
           IMAGE="${{ inputs.image_repo }}"
-          full_sha="${{ steps.vars.outputs.full_sha }}"
+          image_tag="${{ steps.vars.outputs.image_tag }}"
 
-          docker build -t "${IMAGE}:sha-${full_sha}" .
-          docker push "${IMAGE}:sha-${full_sha}"
+          docker build -t "${IMAGE}:${image_tag}" .
+          docker push "${IMAGE}:${image_tag}"
 
       - name: Push convenience tags (alpha/latest/semver)
         if: ${{ inputs.push_convenience }}
@@ -71,8 +71,8 @@ jobs:
 
           IMAGE="${{ inputs.image_repo }}"
           short_sha="${{ steps.vars.outputs.short_sha }}"
-          full_sha="${{ steps.vars.outputs.full_sha }}"
-          BASE="${IMAGE}:sha-${full_sha}"
+          image_tag="${{ steps.vars.outputs.image_tag }}"
+          BASE="${IMAGE}:${image_tag}"
 
           if [[ "${{ steps.vars.outputs.is_dev }}" == "true" ]]; then
             docker tag "$BASE" "${IMAGE}:dev-latest"
