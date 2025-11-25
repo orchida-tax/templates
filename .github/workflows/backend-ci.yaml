@@ -11,11 +11,11 @@ on:
 
       services:
         description: >
-          JSON array of { "service": "<image-name>", "context": "<path>" }.
+          JSON array of { "service": "<image-name>", "context": "<path>", "dockerfile": "<path>" }.
           Example:
           [
-            {"service":"console.api","context":"core/ConsoleApi/"},
-            {"service":"dashboard.api","context":"core/DashboardApi/"}
+            {"service":"console.api","context":".", "dockerfile":"core/osTaxConsoleCore/DockerFile"},
+            {"service":"dashboard.api","context":".", "dockerfile":"core/osDashboardApi/DockerFile"}
           ]
         required: true
         type: string
@@ -232,6 +232,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ steps.meta.outputs.context }}
+          file: ${{ matrix.service.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
