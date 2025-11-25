@@ -1,320 +1,319 @@
 name: Docker build + Helm update
 
 on:
-    workflow_call:
-        inputs:
-            container_registry:
-                description: "Container registry hostname"
-                required: false
-                default: ghcr.io
-                type: string
+  workflow_call:
+    inputs:
+      container_registry:
+        description: "Container registry hostname"
+        required: false
+        default: ghcr.io
+        type: string
 
-            services:
-                description: >
-                    JSON array of { "service": "<image-name>", "dockerfile": "<path>" }.
-                    Example:
-                    [
-                      {"service":"console.api","dockerfile":"core/osTaxConsoleCore/DockerFile"},
-                      {"service":"dashboard.api","dockerfile":"core/osDashboardApi/DockerFile"}
-                    ]
-                required: true
-                type: string
+      services:
+        description: >
+          JSON array of { "service": "<image-name>", "context": "<path>" }.
+          Example:
+          [
+            {"service":"console.api","context":"core/ConsoleApi/"},
+            {"service":"dashboard.api","context":"core/DashboardApi/"}
+          ]
+        required: true
+        type: string
 
-            helm_repo:
-                description: "Helm repo (owner/repo)"
-                required: false
-                default: "orchida-tax/helm-deployments"
-                type: string
+      helm_repo:
+        description: "Helm repo (owner/repo)"
+        required: false
+        default: "orchida-tax/helm-deployments"
+        type: string
 
-            helm_chart_path:
-                description: "Path to chart inside helm_repo"
-                required: false
-                default: "helm-deployments/OrchidaTax"
-                type: string
+      helm_chart_path:
+        description: "Path to chart inside helm_repo"
+        required: false
+        default: "helm-deployments/OrchidaTax"
+        type: string
 
-            helm_services:
-                description: "Space-separated list of Helm services to update (e.g. 'pub_api extractor_api dashboard_api')"
-                required: true
-                type: string
+      helm_services:
+        description: "Space-separated list of Helm services to update (e.g. 'pub_api extractor_api dashboard_api')"
+        required: true
+        type: string
 
-        secrets:
-            gh_pat:
-                description: "PAT with access to helm repo"
-                required: true
+    secrets:
+      gh_pat:
+        description: "PAT with access to helm repo"
+        required: true
 
 permissions:
-    contents: read
-    packages: write
+  contents: read
+  packages: write
 
 env:
-    CONTAINER_REGISTRY: ${{ inputs.container_registry }}
+  CONTAINER_REGISTRY: ${{ inputs.container_registry }}
 
 # ─────────────────────────────────────────────
 # 1) Prepare metadata
 # ─────────────────────────────────────────────
 jobs:
-    prepare-meta:
-        name: Prepare build metadata
-        runs-on: ubuntu-latest
+  prepare-meta:
+    name: Prepare build metadata
+    runs-on: ubuntu-latest
 
-        outputs:
-            short_sha: ${{ steps.sha.outputs.short_sha }}
-            full_sha: ${{ steps.sha.outputs.full_sha }}
-            branch_safe: ${{ steps.branch.outputs.branch_safe }}
-            build_tag: ${{ steps.buildtag.outputs.build_tag }}
-            ref_type: ${{ steps.ref.outputs.ref_type }}
-            ref_name: ${{ steps.ref.outputs.ref_name }}
-            version_tag: ${{ steps.version.outputs.version_tag }}
-            plain_version: ${{ steps.version.outputs.plain_version }}
+    outputs:
+      short_sha: ${{ steps.sha.outputs.short_sha }}
+      full_sha: ${{ steps.sha.outputs.full_sha }}
+      branch_safe: ${{ steps.branch.outputs.branch_safe }}
+      build_tag: ${{ steps.buildtag.outputs.build_tag }}
+      ref_type: ${{ steps.ref.outputs.ref_type }}
+      ref_name: ${{ steps.ref.outputs.ref_name }}
+      version_tag: ${{ steps.version.outputs.version_tag }}
+      plain_version: ${{ steps.version.outputs.plain_version }}
 
-        steps:
-            - name: Expose ref info
-              id: ref
-              run: |
-                  echo "ref_type=${{ github.ref_type || 'branch' }}" >> "$GITHUB_OUTPUT"
-                  echo "ref_name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+    steps:
+      - name: Expose ref info
+        id: ref
+        run: |
+          echo "ref_type=${{ github.ref_type || 'branch' }}" >> "$GITHUB_OUTPUT"
+          echo "ref_name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
 
-            - name: Compute commit SHAs
-              id: sha
-              run: |
-                  SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
-                  echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
-                  echo "full_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+      - name: Compute commit SHAs
+        id: sha
+        run: |
+          SHORT_SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+          echo "full_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
 
-            - name: Compute branch-safe name
-              id: branch
-              run: |
-                  REF_TYPE="${{ github.ref_type || 'branch' }}"
-                  REF_NAME="${{ github.ref_name }}"
+      - name: Compute branch-safe name
+        id: branch
+        run: |
+          REF_TYPE="${{ github.ref_type || 'branch' }}"
+          REF_NAME="${{ github.ref_name }}"
 
-                  if [ "$REF_TYPE" = "branch" ]; then
-                    BRANCH_RAW="$REF_NAME"
-                  else
-                    BRANCH_RAW=""
-                  fi
+          if [ "$REF_TYPE" = "branch" ]; then
+            BRANCH_RAW="$REF_NAME"
+          else
+            BRANCH_RAW=""
+          fi
 
-                  if [ -n "$BRANCH_RAW" ]; then
-                    BRANCH_SAFE=$(echo "$BRANCH_RAW" | tr '[:upper:]' '[:lower:]' | tr '/_' '-')
-                  else
-                    BRANCH_SAFE=""
-                  fi
+          if [ -n "$BRANCH_RAW" ]; then
+            BRANCH_SAFE=$(echo "$BRANCH_RAW" | tr '[:upper:]' '[:lower:]' | tr '/_' '-')
+          else
+            BRANCH_SAFE=""
+          fi
 
-                  echo "branch_safe=$BRANCH_SAFE" >> "$GITHUB_OUTPUT"
+          echo "branch_safe=$BRANCH_SAFE" >> "$GITHUB_OUTPUT"
 
-            - name: Determine build tag (dev / alpha / prod / staging)
-              id: buildtag
-              run: |
-                  REF_TYPE="${{ github.ref_type || 'branch' }}"
-                  REF_NAME="${{ github.ref_name }}"
+      - name: Determine build tag (dev / alpha / prod / staging)
+        id: buildtag
+        run: |
+          REF_TYPE="${{ github.ref_type || 'branch' }}"
+          REF_NAME="${{ github.ref_name }}"
 
-                  BUILD_TAG="dev"  # default
+          BUILD_TAG="dev"  # default
 
-                  if [[ "$REF_TYPE" = "branch" ]]; then
-                    case "$REF_NAME" in
-                      dev)
-                        BUILD_TAG="dev"
-                        ;;
-                      alpha|alfa)
-                        BUILD_TAG="alpha"
-                        ;;
-                      main)
-                        BUILD_TAG="prod"
-                        ;;
-                      *)
-                        BUILD_TAG="dev"
-                        ;;
-                    esac
-                  elif [[ "$REF_TYPE" = "tag" && "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                    # SemVer tag push -> staging
-                    BUILD_TAG="staging"
-                  fi
+          if [[ "$REF_TYPE" = "branch" ]]; then
+            case "$REF_NAME" in
+              dev)
+                BUILD_TAG="dev"
+                ;;
+              alpha|alfa)
+                BUILD_TAG="alpha"
+                ;;
+              main)
+                BUILD_TAG="prod"
+                ;;
+              *)
+                BUILD_TAG="dev"
+                ;;
+            esac
+          elif [[ "$REF_TYPE" = "tag" && "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            # SemVer tag push -> staging
+            BUILD_TAG="staging"
+          fi
 
-                  echo "build_tag=$BUILD_TAG" >> "$GITHUB_OUTPUT"
+          echo "build_tag=$BUILD_TAG" >> "$GITHUB_OUTPUT"
 
-            - name: Determine semantic version (for tag pushes)
-              id: version
-              run: |
-                  REF_TYPE="${{ github.ref_type || 'branch' }}"
-                  REF_NAME="${{ github.ref_name }}"
+      - name: Determine semantic version (for tag pushes)
+        id: version
+        run: |
+          REF_TYPE="${{ github.ref_type || 'branch' }}"
+          REF_NAME="${{ github.ref_name }}"
 
-                  VERSION_TAG=""
-                  PLAIN_VERSION=""
+          VERSION_TAG=""
+          PLAIN_VERSION=""
 
-                  if [ "$REF_TYPE" = "tag" ] && [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                    VERSION_TAG="$REF_NAME"
-                    PLAIN_VERSION="${REF_NAME#v}"
-                  fi
+          if [ "$REF_TYPE" = "tag" ] && [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            VERSION_TAG="$REF_NAME"
+            PLAIN_VERSION="${REF_NAME#v}"
+          fi
 
-                  echo "version_tag=$VERSION_TAG" >> "$GITHUB_OUTPUT"
-                  echo "plain_version=$PLAIN_VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_tag=$VERSION_TAG" >> "$GITHUB_OUTPUT"
+          echo "plain_version=$PLAIN_VERSION" >> "$GITHUB_OUTPUT"
 
-    # ─────────────────────────────────────────────
-    # 2) Build & push images (matrix over services)
-    # ─────────────────────────────────────────────
-    build-and-push:
-        name: Build & Push backend images
-        needs: prepare-meta
-        runs-on: ubuntu-latest
+  # ─────────────────────────────────────────────
+  # 2) Build & push images (matrix over services)
+  # ─────────────────────────────────────────────
+  build-and-push:
+    name: Build & Push backend images
+    needs: prepare-meta
+    runs-on: ubuntu-latest
 
-        strategy:
-            fail-fast: false
-            matrix:
-                service: ${{ fromJson(inputs.services) }}
-                # Each element: { "service": "...", "dockerfile": "..." }
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJson(inputs.services) }}
+        # Each element: { "service": "...", "context": "..." }
 
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-            - name: Set up Docker Buildx
-              uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-            - name: Log in to registry
-              uses: docker/login-action@v3
-              with:
-                  registry: ${{ env.CONTAINER_REGISTRY }}
-                  username: ${{ github.actor }}
-                  password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.CONTAINER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Prepare image tags for ${{ matrix.service.service }}
-              id: meta
-              env:
-                  REGISTRY: ${{ env.CONTAINER_REGISTRY }}
-                  REPOSITORY: ${{ github.repository }} # e.g. orchida-tax/tax-api
-                  SERVICE: ${{ matrix.service.service }}
-                  DOCKERFILE: ${{ matrix.service.dockerfile }}
-                  SHORT_SHA: ${{ needs.prepare-meta.outputs.short_sha }}
-                  FULL_SHA: ${{ needs.prepare-meta.outputs.full_sha }}
-                  BRANCH_SAFE: ${{ needs.prepare-meta.outputs.branch_safe }}
-                  BUILD_TAG: ${{ needs.prepare-meta.outputs.build_tag }}
-                  REF_TYPE: ${{ needs.prepare-meta.outputs.ref_type }}
-                  VERSION_TAG: ${{ needs.prepare-meta.outputs.version_tag }}
-                  PLAIN_VERSION: ${{ needs.prepare-meta.outputs.plain_version }}
-              run: |
-                  IMAGE_NAME="${REGISTRY}/${REPOSITORY}/${SERVICE}"
+      - name: Prepare image tags for ${{ matrix.service.service }}
+        id: meta
+        env:
+          REGISTRY: ${{ env.CONTAINER_REGISTRY }}
+          REPOSITORY: ${{ github.repository }} # e.g. orchida-tax/tax-api
+          SERVICE: ${{ matrix.service.service }}
+          CONTEXT: ${{ matrix.service.context }}
+          SHORT_SHA: ${{ needs.prepare-meta.outputs.short_sha }}
+          FULL_SHA: ${{ needs.prepare-meta.outputs.full_sha }}
+          BRANCH_SAFE: ${{ needs.prepare-meta.outputs.branch_safe }}
+          BUILD_TAG: ${{ needs.prepare-meta.outputs.build_tag }}
+          REF_TYPE: ${{ needs.prepare-meta.outputs.ref_type }}
+          VERSION_TAG: ${{ needs.prepare-meta.outputs.version_tag }}
+          PLAIN_VERSION: ${{ needs.prepare-meta.outputs.plain_version }}
+        run: |
+          IMAGE_NAME="${REGISTRY}/${REPOSITORY}/${SERVICE}"
 
-                  TAGS=""
+          TAGS=""
 
-                  # 1) Canonical tag for Helm: full SHA
-                  CANONICAL_TAG="sha-${FULL_SHA}"
-                  TAGS+="${IMAGE_NAME}:${CANONICAL_TAG}"
+          # 1) Canonical tag for Helm: full SHA
+          CANONICAL_TAG="sha-${FULL_SHA}"
+          TAGS+="${IMAGE_NAME}:${CANONICAL_TAG}"
 
-                  # 2) branch-short_sha & branch-latest
-                  if [ -n "$BRANCH_SAFE" ]; then
-                    TAGS+=$'\n'"${IMAGE_NAME}:${BRANCH_SAFE}-${SHORT_SHA}"
-                    TAGS+=$'\n'"${IMAGE_NAME}:${BRANCH_SAFE}-latest"
-                  fi
+          # 2) branch-short_sha & branch-latest
+          if [ -n "$BRANCH_SAFE" ]; then
+            TAGS+=$'\n'"${IMAGE_NAME}:${BRANCH_SAFE}-${SHORT_SHA}"
+            TAGS+=$'\n'"${IMAGE_NAME}:${BRANCH_SAFE}-latest"
+          fi
 
-                  # 3) SemVer tags (release tags)
-                  if [ "$REF_TYPE" = "tag" ] && [ -n "$VERSION_TAG" ]; then
-                    TAGS+=$'\n'"${IMAGE_NAME}:${VERSION_TAG}"   # v1.2.3
-                    if [ -n "$PLAIN_VERSION" ]; then
-                      TAGS+=$'\n'"${IMAGE_NAME}:${PLAIN_VERSION}"  # 1.2.3
-                    fi
-                  fi
+          # 3) SemVer tags (release tags)
+          if [ "$REF_TYPE" = "tag" ] && [ -n "$VERSION_TAG" ]; then
+            TAGS+=$'\n'"${IMAGE_NAME}:${VERSION_TAG}"   # v1.2.3
+            if [ -n "$PLAIN_VERSION" ]; then
+              TAGS+=$'\n'"${IMAGE_NAME}:${PLAIN_VERSION}"  # 1.2.3
+            fi
+          fi
 
-                  echo "IMAGE_NAME=$IMAGE_NAME"
-                  echo "DOCKERFILE=$DOCKERFILE"
-                  echo "Canonical (Helm) tag: ${CANONICAL_TAG}"
-                  echo "All tags to push:"
-                  echo "$TAGS"
+          echo "IMAGE_NAME=$IMAGE_NAME"
+          echo "CONTEXT=$CONTEXT"
+          echo "Canonical (Helm) tag: ${CANONICAL_TAG}"
+          echo "All tags to push:"
+          echo "$TAGS"
 
-                  {
-                    echo "image_name=$IMAGE_NAME"
-                    echo "dockerfile=$DOCKERFILE"
-                    echo "canonical_tag=$CANONICAL_TAG"
-                    echo "tags<<EOF"
-                    echo "$TAGS"
-                    echo "EOF"
-                  } >> "$GITHUB_OUTPUT"
+          {
+            echo "image_name=$IMAGE_NAME"
+            echo "context=$CONTEXT"
+            echo "canonical_tag=$CANONICAL_TAG"
+            echo "tags<<EOF"
+            echo "$TAGS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
-            - name: Build & push image
-              uses: docker/build-push-action@v6
-              with:
-                  context: .
-                  file: ${{ steps.meta.outputs.dockerfile }}
-                  push: true
-                  tags: ${{ steps.meta.outputs.tags }}
-                  cache-from: type=gha
-                  cache-to: type=gha,mode=max
+      - name: Build & push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ steps.meta.outputs.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-    # ─────────────────────────────────────────────
-    # 3) Update Helm chart
-    # ─────────────────────────────────────────────
-    update-helm-chart:
-        name: Update Helm chart with new image tags
-        needs:
-            - prepare-meta
-            - build-and-push
-        runs-on: ubuntu-latest
+  # ─────────────────────────────────────────────
+  # 3) Update Helm chart
+  # ─────────────────────────────────────────────
+  update-helm-chart:
+    name: Update Helm chart with new image tags
+    needs:
+      - prepare-meta
+      - build-and-push
+    runs-on: ubuntu-latest
 
-        steps:
-            - name: Checkout Helm chart repository
-              uses: actions/checkout@v4
-              with:
-                  repository: ${{ inputs.helm_repo }}
-                  ref: main
-                  path: helm-deployments
-                  token: ${{ secrets.gh_pat }}
+    steps:
+      - name: Checkout Helm chart repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.helm_repo }}
+          ref: main
+          path: helm-deployments
+          token: ${{ secrets.gh_pat }}
 
-            - name: Install yq
-              run: |
-                  VERSION=v4.45.1
-                  BINARY=yq_linux_amd64
-                  wget "https://github.com/mikefarah/yq/releases/download/${VERSION}/${BINARY}.tar.gz" -O - | \
-                  tar xz && sudo mv "${BINARY}" /usr/bin/yq
+      - name: Install yq
+        run: |
+          VERSION=v4.45.1
+          BINARY=yq_linux_amd64
+          wget "https://github.com/mikefarah/yq/releases/download/${VERSION}/${BINARY}.tar.gz" -O - | \
+          tar xz && sudo mv "${BINARY}" /usr/bin/yq
 
-            - name: Update image tags in Helm values
-              env:
-                  HELM_SERVICES: ${{ inputs.helm_services }}
-                  BUILD_TAG: ${{ needs.prepare-meta.outputs.build_tag }}
-                  FULL_SHA: ${{ needs.prepare-meta.outputs.full_sha }}
-                  CHART_PATH: ${{ inputs.helm_chart_path }}
-              run: |
-                  cd "$CHART_PATH"
+      - name: Update image tags in Helm values
+        env:
+          HELM_SERVICES: ${{ inputs.helm_services }}
+          BUILD_TAG: ${{ needs.prepare-meta.outputs.build_tag }}
+          FULL_SHA: ${{ needs.prepare-meta.outputs.full_sha }}
+          CHART_PATH: ${{ inputs.helm_chart_path }}
+        run: |
+          cd "$CHART_PATH"
 
-                  IMAGE_TAG="sha-${FULL_SHA}"
-                  echo "BUILD_TAG=$BUILD_TAG"
-                  echo "Setting Helm image.tag to ${IMAGE_TAG} for services: $HELM_SERVICES"
+          IMAGE_TAG="sha-${FULL_SHA}"
+          echo "BUILD_TAG=$BUILD_TAG"
+          echo "Setting Helm image.tag to ${IMAGE_TAG} for services: $HELM_SERVICES"
 
-                  case "$BUILD_TAG" in
-                    dev)
-                      VALUES_FILE="values-dev.yaml"
-                      ;;
-                    alpha)
-                      VALUES_FILE="values-alpha.yaml"
-                      ;;
-                    prod)
-                      VALUES_FILE="values-prod.yaml"
-                      ;;
-                    staging)
-                      VALUES_FILE="values-staging.yaml"
-                      ;;
-                    *)
-                      echo "Unknown BUILD_TAG=$BUILD_TAG" >&2
-                      exit 1
-                      ;;
-                  esac
+          case "$BUILD_TAG" in
+            dev)
+              VALUES_FILE="values-dev.yaml"
+              ;;
+            alpha)
+              VALUES_FILE="values-alpha.yaml"
+              ;;
+            prod)
+              VALUES_FILE="values-prod.yaml"
+              ;;
+            staging)
+              VALUES_FILE="values-staging.yaml"
+              ;;
+            *)
+              echo "Unknown BUILD_TAG=$BUILD_TAG" >&2
+              exit 1
+              ;;
+          esac
 
-                  echo "Updating file: $VALUES_FILE"
+          echo "Updating file: $VALUES_FILE"
 
-                  set -x
-                  for service in $HELM_SERVICES; do
-                    yq -i ".services.${service}.image.tag = \"${IMAGE_TAG}\"" "$VALUES_FILE"
-                  done
-                  set +x
+          set -x
+          for service in $HELM_SERVICES; do
+            yq -i ".services.${service}.image.tag = \"${IMAGE_TAG}\"" "$VALUES_FILE"
+          done
+          set +x
 
-            - name: Commit and push Helm chart changes
-              env:
-                  BUILD_TAG: ${{ needs.prepare-meta.outputs.build_tag }}
-                  FULL_SHA: ${{ needs.prepare-meta.outputs.full_sha }}
-              run: |
-                  cd ${{ inputs.helm_chart_path }}
-                  IMAGE_TAG="sha-${FULL_SHA}"
+      - name: Commit and push Helm chart changes
+        env:
+          BUILD_TAG: ${{ needs.prepare-meta.outputs.build_tag }}
+          FULL_SHA: ${{ needs.prepare-meta.outputs.full_sha }}
+        run: |
+          cd ${{ inputs.helm_chart_path }}
+          IMAGE_TAG="sha-${FULL_SHA}"
 
-                  git config --global user.name "GitHub Actions"
-                  git config --global user.email "actions@github.com"
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
 
-                  git add .
-                  git commit -m "Update backend-services tags for ${BUILD_TAG} environment to ${IMAGE_TAG}" || echo "No changes to commit"
-                  git push origin main
+          git add .
+          git commit -m "Update backend-services tags for ${BUILD_TAG} environment to ${IMAGE_TAG}" || echo "No changes to commit"
+          git push origin main
