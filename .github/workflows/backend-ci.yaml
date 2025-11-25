@@ -114,7 +114,7 @@ jobs:
               dev)
                 BUILD_TAG="dev"
                 ;;
-              alpha|alfa)
+              alpha|alfa|Alpha)
                 BUILD_TAG="alpha"
                 ;;
               main)
