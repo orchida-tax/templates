@@ -179,10 +179,7 @@ jobs:
       - name: Prepare image tags for ${{ matrix.service.image }}
         id: meta
         env:
-          # REPOSITORY: ${{ github.repository }} # e.g. orchida-tax/tax-api
-          # SERVICE: ${{ matrix.service.image }}
           REGISTRY: ${{ env.CONTAINER_REGISTRY }}
-          REPOSITORY_OWNER: ${{ github.repository_owner }}
           IMAGE_NAME: ${{ matrix.service.image }}
           CONTEXT: ${{ matrix.service.context }}
           SHORT_SHA: ${{ needs.prepare-meta.outputs.short_sha }}
@@ -193,7 +190,7 @@ jobs:
           VERSION_TAG: ${{ needs.prepare-meta.outputs.version_tag }}
           PLAIN_VERSION: ${{ needs.prepare-meta.outputs.plain_version }}
         run: |
-          IMAGE_NAME="${REGISTRY}/${REPOSITORY_OWNER}/${IMAGE_NAME}"
+          IMAGE_NAME="${REGISTRY}/${IMAGE_NAME}"
 
           TAGS=""
 
