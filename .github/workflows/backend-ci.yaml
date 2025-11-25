@@ -3,6 +3,11 @@ name: Docker build + Helm update
 on:
   workflow_call:
     inputs:
+      monorepo:
+        description: "If true, image = <org>/<repo>/<service>. If false, image = <org>/<repo> (or <org>/<service>)."
+        required: false
+        default: true
+        type: boolean
       container_registry:
         description: "Container registry hostname"
         required: false
@@ -11,11 +16,11 @@ on:
 
       services:
         description: >
-          JSON array of { "image": "<image-name>", "context": "<path>", "dockerfile": "<path>" }.
+          JSON array of { "service": "<image-name>", "context": "<path>", "dockerfile": "<path>" }.
           Example:
           [
-            {"image":"tax-api/console.api","context":".", "dockerfile":"core/osTaxConsoleCore/DockerFile"},
-            {"image":"tax-api/dashboard.api","context":".", "dockerfile":"core/osDashboardApi/DockerFile"}
+            {"service":"tax-api/console.api","context":".", "dockerfile":"core/osTaxConsoleCore/DockerFile"},
+            {"service":"tax-api/dashboard.api","context":".", "dockerfile":"core/osDashboardApi/DockerFile"}
           ]
         required: true
         type: string
@@ -176,11 +181,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare image tags for ${{ matrix.service.image }}
+      - name: Prepare image tags for ${{ matrix.service.service }}
         id: meta
         env:
+          MONOREPO: ${{ inputs.monorepo }}
           REGISTRY: ${{ env.CONTAINER_REGISTRY }}
-          IMAGE_NAME: ${{ matrix.service.image }}
+          REPOSITORY: ${{ github.repository }}
+          SERVICE: ${{ matrix.service.service }}
           CONTEXT: ${{ matrix.service.context }}
           SHORT_SHA: ${{ needs.prepare-meta.outputs.short_sha }}
           FULL_SHA: ${{ needs.prepare-meta.outputs.full_sha }}
@@ -190,7 +197,17 @@ jobs:
           VERSION_TAG: ${{ needs.prepare-meta.outputs.version_tag }}
           PLAIN_VERSION: ${{ needs.prepare-meta.outputs.plain_version }}
         run: |
-          IMAGE_NAME="${REGISTRY}/${IMAGE_NAME}"
+          REPO_NAME="${REPOSITORY#*/}"  # part after owner, e.g. 'tax-api' or 'dashboard-front'
+
+          if [ "$MONOREPO" = "true" ]; then
+            IMAGE_NAME="${REGISTRY}/${REPOSITORY}/${SERVICE}"
+          else
+            if [ "$SERVICE" = "$REPO_NAME" ]; then
+              IMAGE_NAME="${REGISTRY}/${REPOSITORY}"
+            else
+              IMAGE_NAME="${REGISTRY}/${SERVICE}"
+            fi
+          fi
 
           TAGS=""
 
