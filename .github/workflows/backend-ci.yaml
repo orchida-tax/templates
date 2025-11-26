@@ -120,7 +120,9 @@ jobs:
                 BUILD_TAG="dev"
                 ;;
               alpha|alfa|Alpha)
-                BUILD_TAG="alpha"
+                  # BUILD_TAG="alpha"
+                  # TEMP FIX: alpha deploys to dev until environment separation is ready
+                BUILD_TAG="dev"
                 ;;
               main)
                 BUILD_TAG="prod"
